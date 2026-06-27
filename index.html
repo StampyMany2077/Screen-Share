@@ -65,6 +65,9 @@
     
     <div id="setup-area" class="container">
         <button id="share-btn">Share My Screen</button>
+        <label style="display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; cursor: pointer;">
+            <input type="checkbox" id="record-prefs" style="width: auto;"> Backup / Record this session locally
+        </label>
         <hr style="width:100%; border:0; border-top:1px solid #ccc;">
         <div>
             <input type="text" id="code-input" maxlength="8" placeholder="Enter 8-digit code">
@@ -120,8 +123,12 @@
         // =========================================================
         // HOST LOGIC (The Screen Sharer)
         // =========================================================
+        let mediaRecorder;
+        let recordedChunks = [];
+
         document.getElementById('share-btn').onclick = async () => {
             isHost = true;
+            const shouldRecord = document.getElementById('record-prefs').checked;
             const generatedCode = Math.floor(10000000 + Math.random() * 90000000).toString();
             initWebRTC(generatedCode);
 
@@ -135,6 +142,54 @@
                 videoElem.srcObject = stream;
                 videoElem.style.display = 'inline-block';
                 stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+
+                // BACKUP RECORDING FEATURE:
+                if (shouldRecord) {
+                    recordedChunks = [];
+                    
+                    // Choose supported format (defaulting to webm container, highly compatible with screen records)
+                    const options = { mimeType: 'video/webm; codecs=vp9' };
+                    mediaRecorder = new MediaRecorder(stream, options);
+
+                    // Collect data chunks as they become available
+                    mediaRecorder.ondataavailable = (event) => {
+                        if (event.data.size > 0) {
+                            recordedChunks.push(event.data);
+                        }
+                    };
+
+                    // Compile and download file automatically when stream ends
+                    mediaRecorder.onstop = () => {
+                        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                        const url = URL.createObjectURL(blob);
+                        
+                        // Create a hidden download link and click it programmatically
+                        const a = document.createElement('a');
+                        a.style.display = 'none';
+                        a.href = url;
+                        a.download = `ScreenShare-Backup-${generatedCode}.webm`;
+                        document.body.appendChild(a);
+                        a.click();
+                        
+                        // Clean up memory
+                        setTimeout(() => {
+                            document.body.removeChild(a);
+                            URL.revokeObjectURL(url);
+                        }, 100);
+                        alert("Backup recording downloaded successfully!");
+                    };
+
+                    // Start recording (slices data every 1 second)
+                    mediaRecorder.start(1000);
+                }
+
+                // Detect when user clicks browser's built-in "Stop Sharing" button
+                stream.getVideoTracks()[0].onended = () => {
+                    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                        mediaRecorder.stop();
+                    }
+                };
+
             } catch (err) {
                 console.error("Failed to acquire screen stream:", err);
                 alert("Error sharing screen. Please check browser permissions.");
