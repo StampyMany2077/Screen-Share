@@ -97,7 +97,7 @@
 
         // Signaling transmitter to backend
         async function sendSignal(event, data) {
-            await fetch('/api/signal', {
+            await fetch('/api/signal.js', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ code: roomCode, event, data })

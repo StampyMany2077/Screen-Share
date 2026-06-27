@@ -1,7 +1,4 @@
-export const dynamic = 'force-dynamic';
-
-import Pusher from 'pusher';
-import { NextResponse } from 'next/server';
+const Pusher = require('pusher');
 
 const pusher = new Pusher({
   appId: process.env.PUSHER_APP_ID,
@@ -11,16 +8,23 @@ const pusher = new Pusher({
   useTLS: true,
 });
 
-export async function POST(request) {
-  try {
-    const { code, event, data } = await request.json();
+module.exports = async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-    // Broadcast the payload to the specific room
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  if (req.method === 'POST') {
+    const { code, event, data } = req.body;
+
+    // Broadcast data directly to the WebRTC peer
     await pusher.trigger(`room-${code}`, event, data);
 
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("Pusher trigger error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return res.status(200).json({ success: true });
   }
-}
+
+  return res.status(405).json({ error: 'Method not allowed' });
+};
