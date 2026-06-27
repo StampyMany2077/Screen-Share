@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⚡ Live Screen Share</title>
+    <script src="https://js.pusher.com/8.0.1/pusher.min.js"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 2rem; background: #f9f9f9; }
+        .container { max-width: 400px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+        button { padding: 12px; font-size: 16px; cursor: pointer; border: none; background: #0070f3; color: white; border-radius: 5px; }
+        input { padding: 10px; font-size: 16px; width: 60%; border: 1px solid #ccc; border-radius: 5px; }
+        video { width: 100%; max-width: 800px; border: 2px solid #333; margin-top: 20px; border-radius: 8px; display: none; }
+    </style>
+</head>
+<body>
+    <h1>⚡ Live Screen Share</h1>
+    
+    <div id="setup-area" class="container">
+        <button id="share-btn">Share My Screen</button>
+        <hr style="width:100%; border:0; border-top:1px solid #ccc;">
+        <div>
+            <input type="text" id="code-input" maxlength="8" placeholder="Enter 8-digit code">
+            <button id="join-btn" style="background:#000;">Join</button>
+        </div>
+    </div>
+
+    <div id="share-info" style="display:none;">
+        <h2>Your Sharing Code: <span id="display-code" style="color: #0070f3;"></span></h2>
+        <p>Give this code to anyone who wants to view your screen.</p>
+    </div>
+
+    <video id="screen-video" autoplay playsinline muted></video>
+
+    <script>
+        // Replace these with your actual Pusher Key and Cluster
+        const PUSHER_KEY = 'YOUR_PUSHER_KEY';
+        const PUSHER_CLUSTER = 'YOUR_PUSHER_CLUSTER';
+
+        let roomCode = '';
+        let isHost = false;
+        let peerConnection;
+        let channel;
+
+        const pusher = new Pusher(PUSHER_KEY, { cluster: PUSHER_CLUSTER });
+        const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+        const videoElem = document.getElementById('screen-video');
+
+        async function sendSignal(event, data) {
+            await fetch('/api/signal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: roomCode, event, data, sender: isHost ? 'host' : 'viewer' })
+            });
+        }
+
+        function initWebRTC(code) {
+            roomCode = code;
+            channel = pusher.subscribe(`room-${code}`);
+            peerConnection = new RTCPeerConnection(rtcConfig);
+
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) sendSignal('ice-candidate', event.candidate);
+            };
+        }
+
+        // Host Logic
+        document.getElementById('share-btn').onclick = async () => {
+            isHost = true;
+            const generatedCode = Math.floor(10000000 + Math.random() * 90000000).toString();
+            initWebRTC(generatedCode);
+
+            document.getElementById('setup-area').style.display = 'none';
+            document.getElementById('share-info').style.display = 'block';
+            document.getElementById('display-code').innerText = generatedCode;
+
+            const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+            videoElem.srcObject = stream;
+            videoElem.style.display = 'inline-block';
+            stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+
+            channel.bind('viewer-ready', async () => {
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                sendSignal('sdp-offer', offer);
+            });
+
+            channel.bind('sdp-answer', async (data) => {
+                if (data.sender === 'viewer') await peerConnection.setRemoteDescription(new RTCSessionDescription(data.signal));
+            });
+
+            channel.bind('ice-candidate', async (data) => {
+                if (data.sender === 'viewer') await peerConnection.addIceCandidate(new RTCIceCandidate(data.signal));
+            });
+        };
+
+        // Viewer Logic
+        document.getElementById('join-btn').onclick = async () => {
+            const input = document.getElementById('code-input').value;
+            if (input.length !== 8) return alert('Enter an 8-digit code');
+            
+            initWebRTC(input);
+            document.getElementById('setup-area').style.display = 'none';
+
+            peerConnection.ontrack = (event) => {
+                videoElem.srcObject = event.streams[0];
+                videoElem.style.display = 'inline-block';
+            };
+
+            channel.bind('sdp-offer', async (data) => {
+                if (data.sender === 'host') {
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.signal));
+                    const answer = await peerConnection.createAnswer();
+                    await peerConnection.setLocalDescription(answer);
+                    sendSignal('sdp-answer', answer);
+                }
+            });
+
+            channel.bind('ice-candidate', async (data) => {
+                if (data.sender === 'host') await peerConnection.addIceCandidate(new RTCIceCandidate(data.signal));
+            });
+
+            setTimeout(() => sendSignal('viewer-ready', {}), 1000);
+        };
+    </script>
+</body>
+</html>
