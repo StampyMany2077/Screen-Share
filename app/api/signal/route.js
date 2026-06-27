@@ -10,10 +10,15 @@ const pusher = new Pusher({
 });
 
 export async function POST(request) {
-  const { code, event, data } = await request.json();
+  try {
+    const { code, event, data } = await request.json();
 
-  // Broadcast the WebRTC signal to everyone else in the room
-  await pusher.trigger(`room-${code}`, event, data);
+    // Broadcast the payload to the specific room
+    await pusher.trigger(`room-${code}`, event, data);
 
-  return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Pusher trigger error:", error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  }
 }
