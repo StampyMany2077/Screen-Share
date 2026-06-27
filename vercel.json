@@ -1,11 +1,11 @@
 {
     "version": 2,
     "builds": [
-      { "src": "index.html", "use": "@vercel/static" },
-      { "src": "api/signal.js", "use": "@vercel/node" }
+      { "src": "api/signal.js", "use": "@vercel/node" },
+      { "src": "index.html", "use": "@vercel/static" }
     ],
     "routes": [
       { "source": "/api/signal.js", "dest": "api/signal.js" },
-      { "source": "/(.*)", "dest": "/index.html" }
+      { "source": "/(.*)", "dest": "index.html" }
     ]
   }
