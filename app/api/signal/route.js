@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import Pusher from 'pusher';
 import { NextResponse } from 'next/server';
 
